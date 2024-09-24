@@ -25,6 +25,7 @@ let nextConfig = {
   // [puppeteer] https://github.com/puppeteer/puppeteer/issues/11052
   experimental: {
     serverComponentsExternalPackages: ['puppeteer-core'],
+    runtime: 'nodejs',
   },
 
   webpack: (config, { isServer }) => {
