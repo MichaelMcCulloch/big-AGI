@@ -51,15 +51,18 @@ interface NewsItem {
 
 // news and feature surfaces
 export const NewsItems: NewsItem[] = [
-  /*{
-    versionCode: '1.17.0',
+  {
+    versionCode: '2.0.0-ea1', // 1.91.0
+    versionName: 'Big-AGI V2 EA1',
+    versionDate: new Date('2024-10-15T01:00:00Z'),
     items: [
-      Screen Capture (when removed from labs)
-      Auto-Merge
-      Draw
-      ...
-    ]
-  }*/
+      { text: <>You&apos;re running an <B>unsupported Early Access</B> build of Big-AGI V2. This version is used by developers to implement long-term breaking features.</> },
+      { text: <>This branch previews experimental features that are subject to change and may break without notice.</> },
+      { text: <>Please report screenshots of breakages and console error messages.</> },
+      { text: <>Please note that this is not the official release.</> },
+      { text: <>For stable releases: <ExternalLink href='https://big-agi.com'>big-agi.com</ExternalLink>.</> },
+    ],
+  },
   {
     versionCode: '1.16.8',
     versionName: 'Crystal Clear',
@@ -85,7 +88,7 @@ export const NewsItems: NewsItem[] = [
       { text: <>1.16.6: Groq <B>Llama 3.1</B> support</> },
       { text: <>1.16.7: Gpt-4o <B>2024-08-06</B></> },
       { text: <>1.16.8: <B>ChatGPT-4o</B> latest</> },
-      { text: <>OpenAI <B>o1</B> and newer models require Big-AGI 2. <B href='https://y2rjg0zillz.typeform.com/to/FDggwwZv?utm_source=github&utm_medium=news116&utm_campaign=ba20'>Sign up here</B></> },
+      { text: <>OpenAI <B>o1</B> and newer models require Big-AGI 2. <B href='https://y2rjg0zillz.typeform.com/to/ZSADpr5u?utm_source=gh-2&utm_medium=news&utm_campaign=ea2'>Sign up here</B></> },
     ],
   },
   {
@@ -327,8 +330,10 @@ function B(props: {
   );
   if (!href)
     return boldText;
+  // append UTM details if missing
+  const hrefWithUtm = href.includes('utm_source=') ? href : href + clientUtmSource();
   return (
-    <ExternalLink href={href + clientUtmSource()} highlight={props.wow} icon={props.issue ? 'issue' : undefined}>
+    <ExternalLink href={hrefWithUtm} highlight={props.wow} icon={props.issue ? 'issue' : undefined}>
       {boldText}
     </ExternalLink>
   );

@@ -34,19 +34,27 @@ export function EnhancedRenderCode(props: {
   language?: string,
   color?: ColorPaletteProp;
   contentScaling: ContentScaling;
+  initialIsCollapsed: boolean;
 
   // onLiveFileCreate?: () => void,
+  onReplaceInCode?: (search: string, replace: string) => boolean;
 }) {
 
   // state
   const [contextMenuAnchor, setContextMenuAnchor] = React.useState<HTMLElement | null>(null);
-  const [isCodeCollapsed, setIsCodeCollapsed] = React.useState(false);
+  const [isCodeCollapsed, setIsCodeCollapsed] = React.useState(props.initialIsCollapsed);
 
   // LiveFile - patch state
   const { button: liveFileButton, actionBar: liveFileActionBar } = useLiveFilePatch(
     props.title, props.code, props.isPartial,
     props.isMobile,
   );
+
+
+  // React to changes in the collapsed state. Note that by default, nothing is collapsed
+  React.useEffect(() => {
+    setIsCodeCollapsed(props.initialIsCollapsed);
+  }, [props.initialIsCollapsed]);
 
 
   // handlers
@@ -107,39 +115,42 @@ export function EnhancedRenderCode(props: {
     </Box>
   ), [props.code, props.semiStableId, props.title]);
 
-  const headerRow = React.useMemo(() => <>
-    {/* Icon and Title */}
-    <TooltipOutlined placement='top-start' color='neutral' title={headerTooltipContents}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        <CodeIcon
-          aria-hidden
-          onClick={handleToggleCodeCollapse}
-          sx={{
-            transform: isCodeCollapsed ? 'rotate(-90deg)' : 'none',
-            transition: 'transform 0.2s cubic-bezier(.17,.84,.44,1)',
-            cursor: 'pointer',
-          }}
-        />
-        <Typography level='title-sm'>
-          {props.title || 'Code'}
-        </Typography>
-      </Box>
-    </TooltipOutlined>
+  const headerRow = React.useMemo(() => {
+    const Icon = CodeIcon;
+    return <>
+      {/* Icon and Title */}
+      <TooltipOutlined placement='top-start' color='neutral' title={headerTooltipContents}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Icon
+            aria-hidden
+            onClick={handleToggleCodeCollapse}
+            sx={{
+              transform: isCodeCollapsed ? 'rotate(-90deg)' : 'none',
+              transition: 'transform 0.2s cubic-bezier(.17,.84,.44,1)',
+              cursor: 'pointer',
+            }}
+          />
+          <Typography level={'title-sm'}>
+            {props.title || 'Code'}
+          </Typography>
+        </Box>
+      </TooltipOutlined>
 
-    {/* LiveFile - Select */}
-    {liveFileButton}
+      {/* LiveFile - Select */}
+      {liveFileButton}
 
-    {/* Menu Options button */}
-    <IconButton
-      size='sm'
-      onClick={handleToggleContextMenu}
-      onContextMenu={handleToggleContextMenu}
-      sx={{ mr: -0.5 }}
-    >
-      <MoreVertIcon />
-    </IconButton>
+      {/* Menu Options button */}
+      <IconButton
+        size='sm'
+        onClick={handleToggleContextMenu}
+        onContextMenu={handleToggleContextMenu}
+        sx={{ mr: -0.5 }}
+      >
+        <MoreVertIcon />
+      </IconButton>
 
-  </>, [handleToggleCodeCollapse, handleToggleContextMenu, headerTooltipContents, isCodeCollapsed, liveFileButton, props.title]);
+    </>;
+  }, [handleToggleCodeCollapse, handleToggleContextMenu, headerTooltipContents, isCodeCollapsed, liveFileButton, props.title]);
 
   // const toolbarRow = React.useMemo(() => <>
   //   {props.onLiveFileCreate && (
@@ -178,7 +189,7 @@ export function EnhancedRenderCode(props: {
       headerRow={headerRow}
       subHeaderInline={liveFileActionBar}
       onHeaderClick={/*props.isMobile ? handleToggleCodeCollapse :*/ undefined}
-      onHeaderContext={handleToggleContextMenu}
+      // onHeaderContext={handleToggleContextMenu} // disabled because ERC got larger, and this will intercept it all
     >
 
       {/* Body of the message (it's a RenderCode with patched sx, for looks) */}
@@ -190,6 +201,7 @@ export function EnhancedRenderCode(props: {
           initialShowHTML={props.initialShowHTML}
           noCopyButton={props.noCopyButton}
           optimizeLightweight={props.optimizeLightweight}
+          onReplaceInCode={props.onReplaceInCode}
           sx={patchCodeSx}
         />
       </ExpanderControlledBox>

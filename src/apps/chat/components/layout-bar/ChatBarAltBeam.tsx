@@ -24,8 +24,9 @@ export function ChatBarAltBeam(props: {
 
 
   // external beam state
-  const { isScattering, isGatheringAny, requiresConfirmation, setIsMaximized, terminateBeam } = useBeamStore(props.beamStore, useShallow((store) => ({
+  const { isEditMode, isScattering, isGatheringAny, requiresConfirmation, setIsMaximized, terminateBeam } = useBeamStore(props.beamStore, useShallow((store) => ({
     // state
+    isEditMode: store.isEditMode,
     isScattering: store.isScattering,
     isGatheringAny: store.isGatheringAny,
     requiresConfirmation: store.isScattering || store.isGatheringAny || store.raysReady > 0,
@@ -60,7 +61,7 @@ export function ChatBarAltBeam(props: {
 
   // intercept esc this beam is focused
   useGlobalShortcuts('ChatBarAltBeam', React.useMemo(() => [
-    { key: ShortcutKey.Esc, action: handleCloseBeam },
+    { key: ShortcutKey.Esc, action: handleCloseBeam, level: 10 /* because Modal-ish */ },
   ], [handleCloseBeam]));
 
 
@@ -76,9 +77,9 @@ export function ChatBarAltBeam(props: {
               : isScattering ? { animation: `${animationColorBeamScatterINV} 5s infinite, ${animationEnterBelow} 0.6s` }
                 : { fontWeight: 'lg' }
           }>
-          {isGatheringAny ? 'Merging...' : isScattering ? 'Beaming...' : 'Beam'}
+          {isGatheringAny ? 'Merging...' : isScattering ? 'Beaming...' : isEditMode ? 'Beam Edit' : 'Beam'}
         </Box>
-        {(!isGatheringAny && !isScattering) && ' Mode'}
+        {(!isGatheringAny && !isScattering && !isEditMode) && ' Mode'}
       </Typography>
 
       {/* Right Close Icon */}

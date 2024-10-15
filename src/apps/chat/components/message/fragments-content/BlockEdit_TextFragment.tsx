@@ -32,7 +32,7 @@ const textAreaSlotPropsDone = {
  * Very similar to <InlineTextArea /> but with externally controlled state rather than internal.
  * Made it for as the editing alternative for <ContentPartText />.
  */
-export function TextFragmentEditor(props: {
+export function BlockEdit_TextFragment(props: {
   // current value
   textPartText: string,
   fragmentId: DMessageFragmentId,
@@ -44,7 +44,7 @@ export function TextFragmentEditor(props: {
 
   // edited value
   editedText?: string,
-  setEditedText: (fragmentId: DMessageFragmentId, value: string) => void,
+  setEditedText: (fragmentId: DMessageFragmentId, value: string, applyNow: boolean) => void,
   onSubmit: (withControl: boolean) => void,
   onEscapePressed: () => void,
 }) {
@@ -62,7 +62,7 @@ export function TextFragmentEditor(props: {
 
   // handlers
   const handleEditTextChanged = React.useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    (e.target.value !== undefined) && setEditedText(fragmentId, e.target.value);
+    (e.target.value !== undefined) && setEditedText(fragmentId, e.target.value, false);
   }, [fragmentId, setEditedText]);
 
   const handleEditKeyDown = React.useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -83,9 +83,9 @@ export function TextFragmentEditor(props: {
   // shortcuts
   const isEdited = props.editedText !== undefined;
   useGlobalShortcuts('TextFragmentEditor', React.useMemo(() => !isFocused ? [] : [
-    { key: ShortcutKey.Enter, shift: true, description: 'Save', disabled: !isEdited && props.enableRestart !== true, level: 1, action: () => onSubmit(false) },
+    { key: ShortcutKey.Enter, shift: true, description: 'Save', disabled: !isEdited && props.enableRestart !== true, level: 3, action: () => onSubmit(false) },
     ...props.enableRestart ? [{ key: ShortcutKey.Enter, ctrl: true, shift: true, description: 'Save & Retry', disabled: !isEdited, level: 3, action: () => onSubmit(true) }] : [],
-    { key: ShortcutKey.Esc, description: 'Cancel', level: 1, action: onEscapePressed },
+    { key: ShortcutKey.Esc, description: 'Cancel', level: 3, action: onEscapePressed },
   ], [isEdited, isFocused, props.enableRestart, onEscapePressed, onSubmit]));
 
   return (

@@ -6,7 +6,6 @@ import { Box, Button, ButtonGroup, Card, Dropdown, Grid, IconButton, Menu, MenuB
 import { ColorPaletteProp, SxProps, VariantProp } from '@mui/joy/styles/types';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
-import AutoModeIcon from '@mui/icons-material/AutoMode';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import FormatPaintTwoToneIcon from '@mui/icons-material/FormatPaintTwoTone';
 import PsychologyIcon from '@mui/icons-material/Psychology';
@@ -31,10 +30,10 @@ import { DMessageMetadata, DMetaReferenceItem, messageFragmentsReduceText } from
 import { ShortcutKey, ShortcutObject, useGlobalShortcuts } from '~/common/components/shortcuts/useGlobalShortcuts';
 import { addSnackbar } from '~/common/components/snackbar/useSnackbarsStore';
 import { animationEnterBelow } from '~/common/util/animUtils';
-import { browserSpeechRecognitionCapability, PLACEHOLDER_INTERIM_TRANSCRIPT, SpeechResult, useSpeechRecognition, } from '~/common/components/useSpeechRecognition';
+import { browserSpeechRecognitionCapability, PLACEHOLDER_INTERIM_TRANSCRIPT, SpeechResult, useSpeechRecognition } from '~/common/components/useSpeechRecognition';
 import { conversationTitle, DConversationId } from '~/common/stores/chat/chat.conversation';
 import { copyToClipboard, supportsClipboardRead } from '~/common/util/clipboardUtils';
-import { createTextContentFragment, DMessageAttachmentFragment, DMessageContentFragment, duplicateDMessageFragments } from '~/common/stores/chat/chat.fragments';
+import { createTextContentFragment, DMessageAttachmentFragment, DMessageContentFragment, duplicateDMessageFragmentsNoPH } from '~/common/stores/chat/chat.fragments';
 import { estimateTextTokens, glueForMessageTokens, marshallWrapDocFragments } from '~/common/stores/chat/chat.tokens';
 import { getConversation, isValidConversation, useChatStore } from '~/common/stores/chat/store-chats';
 import { launchAppCall } from '~/common/app.routes';
@@ -109,6 +108,7 @@ export function Composer(props: {
   const [composeText, debouncedText, setComposeText] = useDebouncer('', 300, 1200, true);
   const [micContinuation, setMicContinuation] = React.useState(false);
   const [speechInterimResult, setSpeechInterimResult] = React.useState<SpeechResult | null>(null);
+  const [sendStarted, setSendStarted] = React.useState(false);
   const {
     chatExecuteMode,
     chatExecuteModeSendColor, chatExecuteModeSendLabel,
@@ -124,7 +124,7 @@ export function Composer(props: {
     labsShowCost: state.labsShowCost,
     labsShowShortcutBar: state.labsShowShortcutBar,
   })));
-  const timeToShowTips = useAppStateStore(state => state.usageCount > 2);
+  const timeToShowTips = useAppStateStore(state => state.usageCount >= 5);
   const { novel: explainShiftEnter, touch: touchShiftEnter } = useUICounter('composer-shift-enter');
   const { novel: explainAltEnter, touch: touchAltEnter } = useUICounter('composer-alt-enter');
   const { novel: explainCtrlEnter, touch: touchCtrlEnter } = useUICounter('composer-ctrl-enter');
@@ -168,8 +168,8 @@ export function Composer(props: {
           onConversationsImportFromFiles([file]);
           onResolve(true);
         }}
-        title="Open Conversation or Attach?"
-        positiveActionText="Open" negativeActionText="Attach"
+        title='Open Conversation or Attach?'
+        positiveActionText='Open' negativeActionText='Attach'
         confirmationText={`Would you like to open the conversation "${file.name}" or attach it to the message?`}
       />
     )), [onConversationsImportFromFiles, showPromisedOverlay]);
@@ -198,6 +198,9 @@ export function Composer(props: {
   const isDesktop = !props.isMobile;
   const noConversation = !targetConversationId;
   const showChatAttachments = chatExecuteModeCanAttach(chatExecuteMode);
+
+  const micIsRunning = !!speechInterimResult;
+  // more mic way below, as we use complex hooks
 
 
   // tokens derived state
@@ -250,10 +253,10 @@ export function Composer(props: {
         open
         onClose={onUserReject}
         onPositive={() => onResolve(true)}
-        confirmationText="Some attached files may not be fully compatible with the current AI model. This could affect processing. Would you like to review or proceed?"
-        positiveActionText="Proceed"
-        negativeActionText="Review Attachments"
-        title="Attachment Compatibility Notice"
+        confirmationText='Some attached files may not be fully compatible with the current AI model. This could affect processing. Would you like to review or proceed?'
+        positiveActionText='Proceed'
+        negativeActionText='Review Attachments'
+        title='Attachment Compatibility Notice'
       />
     ));
   }, [llmAttachmentDraftsCollection.canAttachAllFragments, showPromisedOverlay]);
@@ -261,14 +264,13 @@ export function Composer(props: {
 
   // Primary button
 
-  const handleClear = React.useCallback(() => {
+  const _handleClearText = React.useCallback(() => {
     setComposeText('');
     attachmentsRemoveAll();
     handleInReferenceToClear();
   }, [attachmentsRemoveAll, handleInReferenceToClear, setComposeText]);
 
-
-  const handleSendAction = React.useCallback(async (_chatExecuteMode: ChatExecuteMode, composerText: string): Promise<boolean> => {
+  const _handleSendActionUnguarded = React.useCallback(async (_chatExecuteMode: ChatExecuteMode, composerText: string): Promise<boolean> => {
     if (!isValidConversation(targetConversationId)) return false;
 
     // await user confirmation (or rejection) if attachments are not supported
@@ -304,10 +306,93 @@ export function Composer(props: {
     // send the message - NOTE: if successful, the ownership of the fragments is transferred to the receiver, so we just clear them
     const enqueued = onAction(targetConversationId, _chatExecuteMode, fragments, metadata);
     if (enqueued)
-      handleClear();
+      _handleClearText();
     return enqueued;
-  }, [attachmentsTakeAllFragments, confirmProceedIfAttachmentsNotSupported, handleClear, inReferenceTo, onAction, targetConversationId]);
+  }, [attachmentsTakeAllFragments, confirmProceedIfAttachmentsNotSupported, _handleClearText, inReferenceTo, onAction, targetConversationId]);
 
+  const handleSendAction = React.useCallback(async (chatExecuteMode: ChatExecuteMode, composerText: string): Promise<boolean> => {
+    setSendStarted(true);
+    const enqueued = await _handleSendActionUnguarded(chatExecuteMode, composerText);
+    setSendStarted(false);
+    return enqueued;
+  }, [_handleSendActionUnguarded, setSendStarted]);
+
+
+  // Mic typing & continuation mode - NOTE: this is here because needs the handleSendAction, and provides recognitionState
+
+  const onSpeechResultCallback = React.useCallback((result: SpeechResult) => {
+    // not done: show interim
+    if (!result.done) {
+      setSpeechInterimResult({ ...result });
+      return;
+    }
+
+    // done
+    setSpeechInterimResult(null);
+    const transcript = result.transcript.trim();
+    let nextText = (composeText || '').trim();
+    nextText = nextText ? nextText + ' ' + transcript : transcript;
+
+    // auto-send (mic continuation mode) if requested
+    const autoSend = (result.flagSendOnDone || micContinuation) && nextText.length >= 1 && !noConversation; //&& assistantAbortible;
+    const notUserStop = result.doneReason !== 'manual';
+    if (autoSend) {
+      // if (notUserStop) {
+      void AudioGenerator.chatAutoSend();
+      // void AudioPlayer.playUrl('/sounds/mic-off-mid.mp3');
+      // }
+      void handleSendAction(chatExecuteMode, nextText); // fire/forget
+    } else {
+      // if scheduled for send but not sent, clear the send state
+      if (result.flagSendOnDone)
+        setSendStarted(false);
+
+      // mic off sound
+      if (!micContinuation && notUserStop)
+        void AudioPlayer.playUrl('/sounds/mic-off-mid.mp3').catch(() => {
+          // This happens on Is.Browser.Safari, where the audio is not allowed to play without user interaction
+        });
+
+      // update with the spoken text
+      if (nextText) {
+        composerTextAreaRef.current?.focus();
+        setComposeText(nextText);
+      }
+    }
+  }, [chatExecuteMode, composeText, composerTextAreaRef, handleSendAction, micContinuation, noConversation, setComposeText]);
+
+  const { recognitionState, toggleRecognition } = useSpeechRecognition(onSpeechResultCallback, chatMicTimeoutMs || 2000);
+
+  const micContinuationTrigger = micContinuation && !micIsRunning && !assistantAbortible && !recognitionState.errorMessage;
+  const micColor: ColorPaletteProp = recognitionState.errorMessage ? 'danger' : recognitionState.isActive ? 'primary' : recognitionState.hasAudio ? 'primary' : 'neutral';
+  const micVariant: VariantProp = recognitionState.hasSpeech ? 'solid' : recognitionState.hasAudio ? 'soft' : 'soft';  //(isDesktop ? 'soft' : 'plain');
+
+  const handleToggleMic = React.useCallback(() => {
+    if (micIsRunning && micContinuation)
+      setMicContinuation(false);
+    toggleRecognition();
+  }, [micContinuation, micIsRunning, toggleRecognition]);
+
+  const handleToggleMicContinuation = React.useCallback(() => {
+    setMicContinuation(continued => !continued);
+  }, []);
+
+  React.useEffect(() => {
+    // autostart the microphone if the assistant stopped typing
+    if (micContinuationTrigger)
+      toggleRecognition();
+  }, [toggleRecognition, micContinuationTrigger]);
+
+  React.useEffect(() => {
+    // auto-scroll the mic card to the bottom
+    micCardRef.current?.scrollTo({
+      top: micCardRef.current.scrollHeight,
+      behavior: 'smooth',
+    });
+  }, [speechInterimResult]);
+
+
+  // Other send actins
 
   const handleAppendTextAndSend = React.useCallback(async (appendText: string) => {
     const newText = composeText ? `${composeText} ${appendText}` : appendText;
@@ -315,13 +400,34 @@ export function Composer(props: {
     await handleSendAction(chatExecuteMode, newText);
   }, [chatExecuteMode, composeText, handleSendAction, setComposeText]);
 
+  const handleFinishMicAndSend = React.useCallback(() => {
+    if (!sendStarted) {
+      setSendStarted(true);
+      toggleRecognition(true);
+    }
+  }, [sendStarted, toggleRecognition]);
+
   const handleSendClicked = React.useCallback(async () => {
+    // Auto-send as soon as the mic is done
+    if (recognitionState.isActive) {
+      handleFinishMicAndSend();
+      return;
+    }
+    // Safety option
+    if (micIsRunning) {
+      addSnackbar({ key: 'chat-mic-running', message: 'Please wait for the microphone to finish.', type: 'info' });
+      return;
+    }
     await handleSendAction(chatExecuteMode, composeText); // 'chat/write/...' button
-  }, [chatExecuteMode, composeText, handleSendAction]);
+  }, [chatExecuteMode, composeText, handleFinishMicAndSend, handleSendAction, micIsRunning, recognitionState.isActive]);
 
   const handleSendTextBeamClicked = React.useCallback(async () => {
+    if (micIsRunning) {
+      addSnackbar({ key: 'chat-mic-running', message: 'Please wait for the microphone to finish.', type: 'info' });
+      return;
+    }
     await handleSendAction('beam-content', composeText); // 'beam' button
-  }, [composeText, handleSendAction]);
+  }, [composeText, handleSendAction, micIsRunning]);
 
   const handleStopClicked = React.useCallback(() => {
     targetConversationId && abortConversationTemp(targetConversationId);
@@ -371,7 +477,7 @@ export function Composer(props: {
     const conversation = getConversation(conversationId);
     const messageToEmbed = conversation?.messages.find(m => m.id === messageId);
     if (conversation && messageToEmbed) {
-      const fragmentsCopy = duplicateDMessageFragments(messageToEmbed.fragments);
+      const fragmentsCopy = duplicateDMessageFragmentsNoPH(messageToEmbed.fragments); // [attach] deep copy a message's fragments to attach to ego
       if (fragmentsCopy.length) {
         const chatTitle = conversationTitle(conversation);
         const messageText = messageFragmentsReduceText(fragmentsCopy);
@@ -436,76 +542,7 @@ export function Composer(props: {
 
   // const handleFocusModeOff = React.useCallback(() => setIsFocusedMode(false), [setIsFocusedMode]);
 
-
-  // Mic typing & continuation mode
-
-  const onSpeechResultCallback = React.useCallback((result: SpeechResult) => {
-    // not done: show interim
-    if (!result.done) {
-      setSpeechInterimResult({ ...result });
-      return;
-    }
-
-    // done
-    setSpeechInterimResult(null);
-    const transcript = result.transcript.trim();
-    let nextText = (composeText || '').trim();
-    nextText = nextText ? nextText + ' ' + transcript : transcript;
-
-    // auto-send (mic continuation mode) if requested
-    const autoSend = (result.flagSendOnDone || micContinuation) && nextText.length >= 1 && !noConversation; //&& assistantAbortible;
-    const notUserStop = result.doneReason !== 'manual';
-    if (autoSend) {
-      // if (notUserStop) {
-      void AudioGenerator.chatAutoSend();
-      // void AudioPlayer.playUrl('/sounds/mic-off-mid.mp3');
-      // }
-      void handleSendAction(chatExecuteMode, nextText); // fire/forget
-    } else {
-      if (!micContinuation && notUserStop)
-        void AudioPlayer.playUrl('/sounds/mic-off-mid.mp3').catch(() => {
-          // This happens on Is.Browser.Safari, where the audio is not allowed to play without user interaction
-        });
-      if (nextText) {
-        composerTextAreaRef.current?.focus();
-        setComposeText(nextText);
-      }
-    }
-  }, [chatExecuteMode, composeText, composerTextAreaRef, handleSendAction, micContinuation, noConversation, setComposeText]);
-
-  const { recognitionState, toggleRecognition } = useSpeechRecognition(onSpeechResultCallback, chatMicTimeoutMs || 2000);
-
   // useMediaSessionCallbacks({ play: toggleRecognition, pause: toggleRecognition });
-
-  const micIsRunning = !!speechInterimResult;
-  const micContinuationTrigger = micContinuation && !micIsRunning && !assistantAbortible && !recognitionState.errorMessage;
-  const micColor: ColorPaletteProp = recognitionState.errorMessage ? 'danger' : recognitionState.isActive ? 'primary' : recognitionState.hasAudio ? 'primary' : 'neutral';
-  const micVariant: VariantProp = recognitionState.hasSpeech ? 'solid' : recognitionState.hasAudio ? 'soft' : 'soft';  //(isDesktop ? 'soft' : 'plain');
-
-  const handleToggleMic = React.useCallback(() => {
-    if (micIsRunning && micContinuation)
-      setMicContinuation(false);
-    toggleRecognition();
-  }, [micContinuation, micIsRunning, toggleRecognition]);
-
-  const handleToggleMicContinuation = React.useCallback(() => {
-    setMicContinuation(continued => !continued);
-  }, []);
-
-  React.useEffect(() => {
-    // autostart the microphone if the assistant stopped typing
-    if (micContinuationTrigger)
-      toggleRecognition();
-  }, [toggleRecognition, micContinuationTrigger]);
-
-  React.useEffect(() => {
-    // auto-scroll the mic card to the bottom
-    micCardRef.current?.scrollTo({
-      top: micCardRef.current.scrollHeight,
-      behavior: 'smooth'
-    });
-  }, [speechInterimResult]);
-
 
 
   // Attachment Up
@@ -565,12 +602,12 @@ export function Composer(props: {
         composerShortcuts.push({ key: 'v', ctrl: true, shift: true, action: attachAppendClipboardItems, description: 'Attach Clipboard' });
     }
     if (recognitionState.isActive) {
-      composerShortcuts.push({ key: 'm', ctrl: true, action: () => toggleRecognition(true), description: 'Mic · Send', disabled: !recognitionState.hasSpeech, endDecoratorIcon: TelegramIcon as any, level: 3 });
+      composerShortcuts.push({ key: 'm', ctrl: true, action: handleFinishMicAndSend, description: 'Mic · Send', disabled: !recognitionState.hasSpeech || sendStarted, endDecoratorIcon: TelegramIcon as any, level: 4 });
       composerShortcuts.push({
         key: ShortcutKey.Esc, action: () => {
           setMicContinuation(false);
           toggleRecognition(false);
-        }, description: 'Mic · Stop', level: 3,
+        }, description: 'Mic · Stop', level: 4,
       });
     } else if (browserSpeechRecognitionCapability().mayWork)
       composerShortcuts.push({
@@ -581,7 +618,7 @@ export function Composer(props: {
         }, description: 'Microphone',
       });
     return composerShortcuts;
-  }, [attachAppendClipboardItems, handleAttachFiles, recognitionState.hasSpeech, recognitionState.isActive, showChatAttachments, toggleRecognition]));
+  }, [attachAppendClipboardItems, handleAttachFiles, handleFinishMicAndSend, recognitionState.hasSpeech, recognitionState.isActive, sendStarted, showChatAttachments, toggleRecognition]));
 
 
   // ...
@@ -605,7 +642,7 @@ export function Composer(props: {
   const sendButtonLabel = chatExecuteModeSendLabel;
 
   const sendButtonIcon =
-    micContinuation ? <AutoModeIcon />
+    micContinuation ? null
       : isAppend ? <SendIcon sx={{ fontSize: 18 }} />
         : isReAct ? <PsychologyIcon />
           : isTextBeam ? <ChatBeamIcon /> /* <GavelIcon /> */
@@ -808,7 +845,8 @@ export function Composer(props: {
 
                     {micIsRunning && (
                       <ButtonMicContinuationMemo
-                        variant={micContinuation ? 'solid' : 'soft'} color={micContinuation ? 'primary' : 'neutral'} sx={{ background: micContinuation ? undefined : 'none' }}
+                        isActive={micContinuation}
+                        variant={micContinuation ? 'soft' : 'soft'} color={micContinuation ? 'primary' : 'neutral'} sx={{ background: micContinuation ? undefined : 'none' }}
                         onClick={handleToggleMicContinuation}
                       />
                     )}
@@ -911,7 +949,10 @@ export function Composer(props: {
                   {!assistantAbortible ? (
                     <Button
                       key='composer-act'
-                      fullWidth disabled={noConversation || noLLM}
+                      fullWidth
+                      disabled={noConversation || noLLM}
+                      loading={sendStarted}
+                      loadingPosition='end'
                       onClick={handleSendClicked}
                       endDecorator={sendButtonIcon}
                       sx={{ '--Button-gap': '1rem' }}
@@ -921,7 +962,9 @@ export function Composer(props: {
                   ) : (
                     <Button
                       key='composer-stop'
-                      fullWidth variant='soft' disabled={noConversation}
+                      fullWidth
+                      variant='soft'
+                      disabled={noConversation}
                       onClick={handleStopClicked}
                       endDecorator={<StopOutlinedIcon sx={{ fontSize: 18 }} />}
                       sx={{ animation: `${animationEnterBelow} 0.1s ease-out` }}
@@ -973,7 +1016,7 @@ export function Composer(props: {
               {isDesktop && <Box sx={{ mt: 'auto', display: 'grid', gap: 1 }}>
 
                 {/* [desktop] Call secondary button */}
-                {showChatExtras && <ButtonCallMemo disabled={noConversation || noLLM} onClick={handleCallClicked} />}
+                {showChatExtras && <ButtonCallMemo disabled={noConversation || noLLM || assistantAbortible} onClick={handleCallClicked} />}
 
                 {/* [desktop] Draw Options secondary button */}
                 {isDraw && <ButtonOptionsDraw onClick={handleDrawOptionsClicked} />}

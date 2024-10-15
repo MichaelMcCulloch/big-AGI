@@ -432,7 +432,8 @@ export namespace GeminiWire_API_Generate_Content {
      * Index of the candidate in the list of candidates.
      * NOTE: see GenerationConfig_schema.candidateCount, which can only be set to 1, so index is supposed to be 0.
      */
-    index: z.number(),
+    index: z.number()
+      .optional(), // for `1.5-002` models, on Sept 24, 2024, this became optional
     /**
      * This seems to be equal to 'STOP' on all streaming chunks.
      * In theory: if empty, the model has not stopped generating the tokens.
@@ -480,7 +481,8 @@ export namespace GeminiWire_API_Generate_Content {
 
   export type Response = z.infer<typeof Response_schema>;
   export const Response_schema = z.object({
-    candidates: z.array(Candidate_schema),
+    candidates: z.array(Candidate_schema)
+      .optional(), // 2024-09-27: added for when Gemini only sends usageMetadata (happened firs this day, on gemini-pro-1.5-001)
     promptFeedback: GeminiWire_Safety.PromptFeedback_schema.optional(), // rarely sent (only on violations?)
     /**
      * Metadata on the generation requests' token usage.
