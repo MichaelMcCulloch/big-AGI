@@ -13,7 +13,7 @@ import { presentErrorToHumans } from '~/common/util/errorUtils';
 // NOTE: pay particular attention to the "import type", as this is importing from the server-side Zod definitions
 import type { AixAPI_Access, AixAPI_Context_ChatGenerate, AixAPI_Model, AixAPIChatGenerate_Request } from '../server/api/aix.wiretypes';
 
-import { aixCGR_FromDMessages, aixCGR_FromSimpleText, AixChatGenerate_TextMessages, clientHotFixGenerateRequestForO1Preview } from './aix.client.chatGenerateRequest';
+import { aixCGR_FromDMessagesOrThrow, aixCGR_FromSimpleText, AixChatGenerate_TextMessages, clientHotFixGenerateRequestForO1Preview } from './aix.client.chatGenerateRequest';
 import { ContentReassembler } from './ContentReassembler';
 import { ThrottleFunctionCall } from './ThrottleFunctionCall';
 
@@ -105,7 +105,7 @@ export async function aixChatGenerateContent_DMessage_FromHistory(
   try {
 
     // Aix ChatGenerate Request
-    const aixChatContentGenerateRequest = await aixCGR_FromDMessages(chatHistory, 'complete');
+    const aixChatContentGenerateRequest = await aixCGR_FromDMessagesOrThrow(chatHistory, 'complete');
 
     await aixChatGenerateContent_DMessage(
       llmId,
@@ -309,7 +309,6 @@ function _llToText(src: AixChatGenerateContent_LL, dest: AixChatGenerateText_Sim
           break;
         case 'tool_invocation':
           throw new Error(`AIX: Unexpected tool invocation ${fragment.part.invocation?.type === 'function_call' ? fragment.part.invocation.name : fragment.part.id} in the Text response.`);
-        case 'ph': // impossible
         case 'image_ref': // impossible
         case 'tool_response': // impossible - stopped at the invocation alrady
         case '_pt_sentinel': // impossible
@@ -560,7 +559,7 @@ async function _aixChatGenerateContent_LL(
     // reassemble the particles
     for await (const particle of particles) {
       contentReassembler.reassembleParticle(particle, abortSignal.aborted);
-      if (onReassemblyUpdate) {
+      if (onReassemblyUpdate && accumulator_LL.fragments.length /* we want the first update to have actual content */) {
         if (throttler)
           throttler.decimate(() => onReassemblyUpdate(accumulator_LL, false));
         else
